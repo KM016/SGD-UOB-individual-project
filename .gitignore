@@ -1,0 +1,12 @@
+*
+!.gitignore
+!scripts/
+!scripts/**
+!notebooks/
+!notebooks/**
+!figures/
+!figures/**
+!MiahK Individual Report.pdf
+
+.DS_Store
+**/.DS_Store
