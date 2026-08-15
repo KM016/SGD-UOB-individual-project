@@ -7,6 +7,13 @@
 !figures/
 !figures/**
 !MiahK Individual Report.pdf
+!logs/
+!logs/well-conditioned/
+!logs/well-conditioned/.gitkeep
+!logs/ill-conditioned/
+!logs/ill-conditioned/.gitkeep
+!statistics/
+!statistics/.gitkeep
 
 .DS_Store
 **/.DS_Store
