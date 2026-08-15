@@ -1,12 +1,16 @@
 # =============================================================================
 # Imports
 # =============================================================================
+import argparse
 import json
+from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy import stats
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # =============================================================================
 # Safety Constants
@@ -510,14 +514,46 @@ def tail_stats(logs, ykey="obj_gap", tail_frac=0.25):
 
 # dumps logs 
 def dump_logs_json(filename, all_logs):
-    with open(filename, "w") as f:
+    destination = Path(filename)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("w") as f:
         json.dump(all_logs, f, indent=2)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Reproduce the well-conditioned stochastic-approximation experiment."
+    )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Run a bounded smoke experiment suitable for CI; results are not report results.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help="Artifact directory. Relative paths are resolved from the repository root.",
+    )
+    return parser.parse_args()
+
+
+def resolve_output_root(requested):
+    if requested is None:
+        return REPO_ROOT
+    requested = requested.expanduser()
+    if not requested.is_absolute():
+        requested = REPO_ROOT / requested
+    return requested.resolve()
 
 # =============================================================================
 # Main
 # =============================================================================
 
 if __name__ == "__main__":
+
+    args = parse_args()
+    output_root = resolve_output_root(args.output_root)
 
 # config 
     cfg = {
@@ -541,6 +577,17 @@ if __name__ == "__main__":
         "rate_y_hi_comp":   1e-2,
         "rate_y_lo_comp":   1e-10,
     }
+
+    if args.quick:
+        cfg.update({
+            "n": 300,
+            "d": 12,
+            "seeds": [0, 1],
+            "svrg_epochs": 10,
+            "svrg_m": 30,
+            "log_every_sgd": 100,
+            "variance_sample_size": 30,
+        })
 
     # Setup
     A, b, _, mu = make_toy_least_squares(cfg["n"], cfg["d"], cfg["noise_std"], cfg["mu"], 42)
@@ -620,12 +667,12 @@ if __name__ == "__main__":
     ]
     
     # dumps
-    dump_logs_json("logs/well-conditioned/logs_sgd_const.json", logs_sgd_const)
-    dump_logs_json("logs/well-conditioned/logs_sgd_rm.json", logs_sgd_rm)
-    dump_logs_json("logs/well-conditioned/logs_svrg.json", logs_svrg)
-    dump_logs_json("logs/well-conditioned/logs_psgd_const.json", logs_psgd_const)
-    dump_logs_json("logs/well-conditioned/logs_psgd_rm.json", logs_psgd_rm)
-    dump_logs_json("logs/well-conditioned/logs_psvrg.json", logs_psvrg)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_sgd_const.json", logs_sgd_const)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_sgd_rm.json", logs_sgd_rm)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_svrg.json", logs_svrg)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_psgd_const.json", logs_psgd_const)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_psgd_rm.json", logs_psgd_rm)
+    dump_logs_json(output_root / "logs/well-conditioned/logs_psvrg.json", logs_psvrg)
 
     # -------------------------------------------------------------------------
     # Mechanism plots
@@ -670,7 +717,9 @@ if __name__ == "__main__":
         style_axes(ax); ax.legend()
     
     plt.tight_layout(rect=[0, 0.04, 1, 1])
-    plt.savefig("figures/well-conditioned/mechanism_plots_smooth.png", dpi=300, bbox_inches="tight", facecolor=fig_s.get_facecolor())
+    smooth_figure = output_root / "figures/well-conditioned/mechanism_plots_smooth.png"
+    smooth_figure.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(smooth_figure, dpi=300, bbox_inches="tight", facecolor=fig_s.get_facecolor())
     print("Saved mechanism_plots_smooth.png")
 
     # ----------------------
@@ -699,13 +748,25 @@ if __name__ == "__main__":
         style_axes(ax); ax.legend()
     
     plt.tight_layout(rect=[0, 0.04, 1, 1])
-    plt.savefig("figures/well-conditioned/mechanism_plots_composite.png", dpi=300, bbox_inches="tight", facecolor=fig_c.get_facecolor())
+    composite_figure = output_root / "figures/well-conditioned/mechanism_plots_composite.png"
+    composite_figure.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(composite_figure, dpi=300, bbox_inches="tight", facecolor=fig_c.get_facecolor())
     print("Saved mechanism_plots_composite.png")
 
     # -------------------------------------------------------------------------
     # Summary statistics
     # -------------------------------------------------------------------------
     print("\nComputing summary statistics...")
+
+    def finite_mean(values):
+        finite = np.asarray(values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        return float(np.mean(finite)) if finite.size else float("nan")
+
+    def finite_std(values):
+        finite = np.asarray(values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        return float(np.std(finite)) if finite.size else float("nan")
 
     def summarise_method(all_logs, label, is_smooth=True, fit_kind="linear"):
         slopes, r2s, nfits = [], [], []
@@ -744,19 +805,17 @@ if __name__ == "__main__":
                 
             vars_end.append(v)
 
-        valid_fit = np.array(nfits) >= 8
-
         return {
             "label": label, "fit_kind": fit_kind,
-            "slope_mean":    float(np.nanmean(slopes)),
-            "slope_std":     float(np.nanstd(slopes)),
-            "r2_mean":       float(np.nanmean(r2s)),
-            "gap_tail_mean": float(np.nanmean(gaps)),
-            "gap_tail_std":  float(np.nanstd(gaps)),
-            "dist_tail_mean":float(np.nanmean(dists)),
-            "dist_tail_std": float(np.nanstd(dists)),
-            "var_end_mean":  float(np.nanmean(vars_end)),
-            "var_end_std":   float(np.nanstd(vars_end)),
+            "slope_mean":    finite_mean(slopes),
+            "slope_std":     finite_std(slopes),
+            "r2_mean":       finite_mean(r2s),
+            "gap_tail_mean": finite_mean(gaps),
+            "gap_tail_std":  finite_std(gaps),
+            "dist_tail_mean":finite_mean(dists),
+            "dist_tail_std": finite_std(dists),
+            "var_end_mean":  finite_mean(vars_end),
+            "var_end_std":   finite_std(vars_end),
         }
 
     smooth_summaries = [
@@ -779,7 +838,9 @@ if __name__ == "__main__":
             s += f" +/- {std:.2e}" if sci else f" +/- {std:.4f}"
         return s
 
-    with open("statistics/summary_statistics.txt", "w") as f:
+    summary_path = output_root / "statistics/summary_statistics.txt"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with summary_path.open("w") as f:
 
         def w(line=""):
             f.write(line + "\n")
@@ -883,5 +944,5 @@ if __name__ == "__main__":
         w("END OF SUMMARY")
         w("=" * 80)
 
-    print("Saved summary_statistics.txt")
+    print(f"Saved {summary_path}")
     print("Done!")

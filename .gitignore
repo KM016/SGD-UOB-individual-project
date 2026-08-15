@@ -1,12 +1,25 @@
-*
-!.gitignore
-!scripts/
-!scripts/**
-!notebooks/
-!notebooks/**
-!figures/
-!figures/**
-!MiahK Individual Report.pdf
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
+# Environments and notebooks
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Generated experiment artifacts
+logs/
+statistics/
+.artifacts/
+tmp/
+
+# Editors and operating systems
 .DS_Store
 **/.DS_Store
+.idea/
+.vscode/
